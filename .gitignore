@@ -1,0 +1,6 @@
+.env
+pgdata/
+*.dump
+.idea/
+.vscode/
+.DS_Store
