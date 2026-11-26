@@ -78,9 +78,9 @@
 | Сущность | Атрибуты | Предполагаемый ключ | Тип ключа |
 |---|---|---|---|
 | `app_user` | `user_id`, `email`, `full_name`, `role`, `created_at` | `user_id` | суррогатный; `email` — естественный кандидат |
-| `room` | `room_id`, `code`, `capacity`, `is_active` | `room_id` | суррогатный; `code` — естественный кандидат |
-| `booking` | `booking_id`, `room_id`, `user_id`, `time_range`, `status`, `created_at` | `booking_id` | суррогатный |
-| `booking_event` | `event_id`, `booking_id`, `event_type`, `payload`, `created_at` | `event_id` | суррогатный |
+| `room` | `room_id`, `code`, `capacity`, `is_active`, `hourly_rate` | `room_id` | суррогатный; `code` — естественный кандидат |
+| `booking` | `booking_id`, `room_id`, `user_id`, `time_range`, `status`, `rate_snapshot`, `total_price`, `created_at` | `booking_id` | суррогатный |
+| `booking_event` | `event_id`, `booking_id`, `event_type`, `payload`, `created_at` | `event_id` | суррогатный; слабая сущность |
 
 ## 4. Связи и кардинальности
 
@@ -99,11 +99,14 @@
 6. Нельзя удалить помещение или пользователя, если на них есть брони: `ON DELETE RESTRICT` на `booking.room_id` и `booking.user_id`. Журнал `booking_event.booking_id` использует `ON DELETE CASCADE`.
 7. Отменять можно только активную бронь; проверка выполняется в приложении или триггере.
 8. Тип события журнала должен быть одним из: `created`, `cancelled`, `completed`, `no_show` (`CHECK (event_type IN (...))` в `booking_event`).
+9. Фиксация цены на момент брони. `booking.rate_snapshot` заполняется из `room.hourly_rate` триггером `booking_set_rate` при `INSERT`. При последующем `UPDATE room SET hourly_rate = …` снимок не пересчитывается — исторические брони и отчёты сохраняют цену, по которой бронировали. Изменение `booking.rate_snapshot` вручную возможно только через `UPDATE`, но только для корректировки (например, администратором); на практике — не переписывается.
+10. Стоимость вычисляется автоматически. `booking.total_price` — `GENERATED ALWAYS AS (rate_snapshot × часы) STORED`. Прямая запись в `total_price` запрещена (SQLSTATE `428C9`, `cannot insert into generated column`). При `UPDATE booking.time_range` или `rate_snapshot` значение пересчитывается БД.
+11. Ставка неотрицательна.`room.hourly_rate >= 0` (`CHECK`). Помещение с нулевой ставкой допустимо, но для платного бронирования требуется задать `hourly_rate > 0` — проверка в приложении или расширение триггера `booking_set_rate` (граничный случай).
 
 ## 6. Профиль нагрузки
 
 - **OLTP:** создание брони, проверка доступности, отмена брони, смена статуса, запись события журнала. Короткие транзакции, высокая требовательность к целостности.
-- **OLAP:** отчёты по загрузке помещений, количеству броней, часам занятости, несостоявшимся броням, агрегаты по типам событий из `booking_event`.
+- **OLAP:** отчёты по загрузке помещений, количеству броней, часам занятости, несостоявшимся броням, агрегаты по типам событий из `booking_event`, **выручка по `booking.total_price`** за период.
 - **Ожидаемые объёмы:** пользователи — тысячи; помещения — сотни; брони — сотни тысяч в год; события журнала — миллионы строк.
 
 ## 7. Нефункциональные требования

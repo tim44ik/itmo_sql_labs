@@ -28,6 +28,7 @@ erDiagram
         text code
         int capacity
         boolean is_active
+        numeric hourly_rate "руб./час"
     }
 
     AMENITY {
@@ -47,6 +48,8 @@ erDiagram
         bigint user_id FK
         tstzrange time_range
         text status "active | cancelled | completed | no_show"
+        numeric rate_snapshot "снимок hourly_rate"
+        numeric total_price "GENERATED: rate × часы"
         timestamptz created_at
     }
 
